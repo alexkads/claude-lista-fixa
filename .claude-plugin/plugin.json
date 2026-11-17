@@ -1,0 +1,8 @@
+{
+  "name": "lista-fixa",
+  "version": "0.1.0",
+  "description": "Painel fixo à direita com a última lista de tarefas do update_plan",
+  "author": { "name": "alexkads" },
+  "license": "MIT",
+  "types": "./types/index.d.ts"
+}

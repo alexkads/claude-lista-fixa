@@ -1,0 +1,5 @@
+{
+  "name": "claude-lista-fixa",
+  "owner": { "name": "alexkads" },
+  "plugins": [{ "name": "lista-fixa", "source": "./" }]
+}
