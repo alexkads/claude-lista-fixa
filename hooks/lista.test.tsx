@@ -32,21 +32,32 @@ test('acompanha cada update_plan e guarda a última lista', async ($, on) => {
   } as never)
   await $.tool.call({ tool: 'mcp__ccd_turn__update_plan', advance: true } as never)
 
+  const icones = async (ui: { findAll: (q: { type: string }) => Promise<{ props: Record<string, unknown> }[]> }) =>
+    (await ui.findAll({ type: 'Svg' })).map(x => x.props.alt)
+
+  // Terminal: símbolos de texto.
+  const term = await $.ui.mount({ ...PAINEL, surface: 'terminal' })
+  expect((await term.find({ type: 'Text', text: /^✓/ }))?.text).toBe('✓ Ler')
+  expect((await term.find({ type: 'Text', text: /^◐/ }))?.text).toBe('◐ Construir')
+  expect((await term.find({ type: 'Text', text: /^◌/ }))?.text).toBe('◌ Testar')
+  await term.unmount()
+
+  // Desktop: anel de progresso e ícones animados.
   let ui = await $.ui.mount({ ...PAINEL, surface: 'desktop' })
-  expect((await ui.find({ type: 'Text', text: /^✓/ }))?.text).toBe('✓ Ler')
-  expect((await ui.find({ type: 'Text', text: /^◐/ }))?.text).toBe('◐ Construir')
-  expect((await ui.find({ type: 'Text', text: /^◌/ }))?.text).toBe('◌ Testar')
+  expect(await icones(ui)).toEqual(['1 de 3 passos feitos', 'Feito', 'Em andamento', 'Pendente'])
+  expect((await ui.find({ type: 'Text', text: 'Construir' }))?.text).toBe('Construir')
+  expect((await ui.find({ type: 'Text', text: /^Em andamento$/ }))?.text).toBe('Em andamento')
   await ui.unmount()
 
   await $.tool.call({ tool: 'mcp__ccd_turn__update_plan', done: [2], start: 3 } as never)
   ui = await $.ui.mount({ ...PAINEL, surface: 'desktop' })
-  expect((await ui.find({ type: 'Text', text: /^◐/ }))?.text).toBe('◐ Testar')
+  expect(await icones(ui)).toEqual(['2 de 3 passos feitos', 'Feito', 'Feito', 'Em andamento'])
   await ui.unmount()
 
   await $.tool.call({ tool: 'mcp__ccd_turn__wrap_up', recap: 'ok' } as never)
   ui = await $.ui.mount({ ...PAINEL, surface: 'desktop' })
-  expect(await ui.find({ type: 'Text', text: /^◐/ })).toBe(undefined)
-  expect((await ui.find({ type: 'Text', text: /3 de 3/ }))?.text).toMatch(/concluída/)
+  expect(await icones(ui)).toEqual(['3 de 3 passos feitos', 'Feito', 'Feito', 'Feito'])
+  expect((await ui.find({ type: 'Text', text: /^Concluída$/ }))?.text).toBe('Concluída')
   await ui.unmount()
 })
 

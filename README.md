@@ -2,7 +2,8 @@
 
 Mod do Claude Code que mantém a lista de atividades do turno num painel fixo à direita da conversa, no app desktop do Claude. É a mesma lista que a ferramenta `update_plan` desenha embaixo da última mensagem, mas ela não encolhe quando o turno termina: o painel sempre mostra a última lista enviada.
 
-- ✓ feito · ◐ em andamento · ◌ pendente
+- Anel de progresso animado no topo; passo atual em destaque com um anel girando
+- ✓ feito · ◐ em andamento · ◌ pendente (ícones em SVG animado no app; símbolos de texto no terminal)
 - Cabeçalho com "3 de 5 · atualizada às 14:32" (vira "concluída" depois do `wrap_up`)
 - Abre no primeiro `update_plan` e reabre a cada novo; `/lista` também abre o painel
 - Minimizado, mostra só o placar e o passo atual
