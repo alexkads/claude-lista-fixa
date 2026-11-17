@@ -1,4 +1,5 @@
 import { expect, test } from 'claude-code/testing'
+import type { TestBody } from 'claude-code/testing'
 
 const PAINEL = {
   plugin: 'lista-fixa',
@@ -7,77 +8,130 @@ const PAINEL = {
   props: {
     title: 'Atividades',
     isFocused: false,
-    bodyColumns: 40,
+    bodyColumns: 48,
     placement: 'dock',
-    scroll: { offset: 0, bodyRows: 20 },
+    scroll: { offset: 0, bodyRows: 30 },
     view: {},
   },
 } as const
 
-test('acompanha cada update_plan e guarda a última lista', async ($, on) => {
-  on('command.register', () => ({ value: { command: 'lista' } }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
-  on('session.start', (_, e) => ({ cwd: e.cwd }))
-  on('tool.call', () => ({ result: {} }))
+const PLANO = 'mcp__ccd_turn__update_plan'
 
-  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
-  await $.tool.call({
-    tool: 'mcp__ccd_turn__update_plan',
-    items: [
-      { content: 'Ler', status: 'in_progress' },
-      { content: 'Construir', status: 'pending' },
-      { content: 'Testar', status: 'pending' },
-    ],
-    scope: 'first_task',
-  } as never)
-  await $.tool.call({ tool: 'mcp__ccd_turn__update_plan', advance: true } as never)
-
-  const icones = async (ui: { findAll: (q: { type: string }) => Promise<{ props: Record<string, unknown> }[]> }) =>
-    (await ui.findAll({ type: 'Svg' })).map(x => x.props.alt)
-
-  // Terminal: símbolos de texto.
-  const term = await $.ui.mount({ ...PAINEL, surface: 'terminal' })
-  expect((await term.find({ type: 'Text', text: /^✓/ }))?.text).toBe('✓ Ler')
-  expect((await term.find({ type: 'Text', text: /^◐/ }))?.text).toBe('◐ Construir')
-  expect((await term.find({ type: 'Text', text: /^◌/ }))?.text).toBe('◌ Testar')
-  await term.unmount()
-
-  // Desktop: anel de progresso e ícones animados.
-  let ui = await $.ui.mount({ ...PAINEL, surface: 'desktop' })
-  expect(await icones(ui)).toEqual(['1 de 3 passos feitos', 'Feito', 'Em andamento', 'Pendente'])
-  expect((await ui.find({ type: 'Text', text: 'Construir' }))?.text).toBe('Construir')
-  expect((await ui.find({ type: 'Text', text: /^Em andamento$/ }))?.text).toBe('Em andamento')
-  await ui.unmount()
-
-  await $.tool.call({ tool: 'mcp__ccd_turn__update_plan', done: [2], start: 3 } as never)
-  ui = await $.ui.mount({ ...PAINEL, surface: 'desktop' })
-  expect(await icones(ui)).toEqual(['2 de 3 passos feitos', 'Feito', 'Feito', 'Em andamento'])
-  await ui.unmount()
-
-  await $.tool.call({ tool: 'mcp__ccd_turn__wrap_up', recap: 'ok' } as never)
-  ui = await $.ui.mount({ ...PAINEL, surface: 'desktop' })
-  expect(await icones(ui)).toEqual(['3 de 3 passos feitos', 'Feito', 'Feito', 'Feito'])
-  expect((await ui.find({ type: 'Text', text: /^Concluída$/ }))?.text).toBe('Concluída')
-  await ui.unmount()
-})
-
-test('sem update_plan o painel não abre (terminal, VS Code)', async ($, on) => {
+// Motor de mentira: abre painel, guarda o store e responde às ferramentas.
+const motor = (on: Parameters<TestBody>[1], store: Record<string, unknown> = {}) => {
   const abertos: string[] = []
   on('command.register', () => ({ value: { command: 'lista' } }))
   on('ui.open', (_, e) => {
     abertos.push(e.id)
     return { value: { isPlaced: true } }
   })
+  on('store.get', (_, e) => ({ value: store[e.key] }))
+  on('store.set', (_, e) => {
+    store[e.key] = e.value
+    return { value: undefined }
+  })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('tool.call', () => ({ result: {} }))
+  on('clock.every', () => ({ value: undefined }))
+  return { abertos, store }
+}
 
+const lista3 = {
+  tool: PLANO,
+  items: [
+    { content: 'Ler', status: 'in_progress' },
+    { content: 'Construir', status: 'pending' },
+    { content: 'Testar', status: 'pending' },
+  ],
+} as never
+
+test('acompanha cada update_plan; terminal com símbolos', async ($, on) => {
+  motor(on)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.tool.call(lista3)
+  await $.tool.call({ tool: PLANO, advance: true } as never)
+
+  const term = await $.ui.mount({ ...PAINEL, surface: 'terminal' })
+  expect((await term.find({ type: 'Text', text: /^✓/ }))?.text).toBe('✓ Ler')
+  expect((await term.find({ type: 'Text', text: /^◐/ }))?.text).toBe('◐ Construir')
+  expect((await term.find({ type: 'Text', text: /^◌/ }))?.text).toBe('◌ Testar')
+  await term.unmount()
+
+  const ui = await $.ui.mount({ ...PAINEL, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /^Linha do tempo$/ }))?.text).toBe('Linha do tempo')
+  expect((await ui.find({ type: 'Text', text: /^AGORA/ }))?.text).toMatch(/^AGORA · /)
+  expect((await ui.find({ type: 'Text', text: /^Próximo:/ }))?.text).toBe('Próximo: Testar')
+  await ui.unmount()
+})
+
+test('menu flutuante troca o modelo e guarda a escolha', async ($, on) => {
+  const { store } = motor(on)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.tool.call(lista3)
+
+  const ui = await $.ui.mount({ ...PAINEL, surface: 'desktop' })
+  expect(await ui.find({ key: 'menu-flutuante' })).toBe(undefined)
+  await ui.press({ key: 'menu' })
+  expect(await ui.find({ key: 'menu-flutuante' })).toBeDefined()
+
+  await ui.press({ key: 'modelo-compacto' })
+  expect(await ui.find({ key: 'menu-flutuante' })).toBe(undefined)
+  expect((await ui.find({ type: 'Text', text: /^Compacto$/ }))?.text).toBe('Compacto')
+  expect(store.modelo).toBe('compacto')
+
+  // Atalho 2: Foco no agora.
+  await ui.press({ key: 'atalho-foco' })
+  expect((await ui.find({ type: 'Text', text: /^A SEGUIR$/ }))?.text).toBe('A SEGUIR')
+  expect(store.modelo).toBe('foco')
+  await ui.unmount()
+})
+
+test('modelo salvo vale numa sessão nova; /lista troca', async ($, on) => {
+  motor(on, { modelo: 'foco' })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.tool.call(lista3)
+  let ui = await $.ui.mount({ ...PAINEL, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /^Foco no agora$/ }))?.text).toBe('Foco no agora')
+  await ui.unmount()
+
+  const r = await $.command.run({ command: 'lista', args: 'compacto' } as never)
+  expect((r as { text?: string }).text).toMatch(/Compacto/)
+  ui = await $.ui.mount({ ...PAINEL, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /^Compacto$/ }))?.text).toBe('Compacto')
+  await ui.unmount()
+})
+
+test('turno parado com passo aberto mostra Parada; wrap_up conclui', async ($, on) => {
+  motor(on)
+  on('turn.complete', () => ({ text: '' }) as never)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.tool.call(lista3)
+  await $.turn.complete({ turnId: 't1', answer: '', durationMs: 10, isAborted: false, reason: 'end_turn', text: '' } as never)
+
+  let ui = await $.ui.mount({ ...PAINEL, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /^PARADA/ }))?.text).toMatch(/^PARADA/)
+  expect((await ui.find({ type: 'Text', text: 'Aguardando sua resposta' }))?.text).toBe('Aguardando sua resposta')
+  await ui.unmount()
+
+  await $.tool.call({ tool: 'mcp__ccd_turn__wrap_up', recap: 'ok' } as never)
+  ui = await $.ui.mount({ ...PAINEL, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /3 de 3 concluídos/ }))?.text).toBe('3 de 3 concluídos')
+  await ui.unmount()
+})
+
+test('sem update_plan o painel não abre (terminal, VS Code)', async ($, on) => {
+  const { abertos } = motor(on)
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await $.tool.call({ tool: 'Bash', command: 'ls' })
   expect(abertos).toEqual([])
-
-  await $.tool.call({
-    tool: 'mcp__ccd_turn__update_plan',
-    items: [{ content: 'Um', status: 'in_progress' }],
-  } as never)
+  await $.tool.call(lista3)
   expect(abertos).toEqual(['lista-fixa'])
+})
+
+test('estado da 0.1.x é recusado sem erro', async ($, on) => {
+  motor(on)
+  on('state.get', () => ({ value: { value: { passos: [{ content: 'velho' }] }, version: 1 } }))
+  const ui = await $.ui.mount({ ...PAINEL, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text' }))?.text).toBe('A lista aparece aqui quando o Claude começar uma tarefa.')
+  await ui.unmount()
 })
