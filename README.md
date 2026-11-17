@@ -26,6 +26,22 @@ Mod do Claude Code que mantém a lista de atividades do turno num painel fixo à
 
 Como funciona: um hook `tool.call` em `mcp__ccd_turn__update_plan` reproduz `items`, `advance`, `done` e `start` no estado da sessão, e o `mcp__ccd_turn__wrap_up` dá baixa em todos os passos.
 
+## Modelos do painel
+
+O botão **⋯** no topo do painel abre um menu flutuante para escolher o modelo. A escolha fica guardada e vale para as próximas sessões.
+
+| Modelo | Para quê |
+| --- | --- |
+| **Linha do tempo** (padrão) | Passos ligados por uma linha, o atual num cartão "Agora · há N min"; feitos recolhem quando passam de 3; rodapé com o próximo passo. |
+| **Foco no agora** | Cartão grande com o anel de progresso e o passo atual; "A seguir" com os pendentes; feitos recolhíveis. |
+| **Compacto** | Barra com um segmento por passo e lista numerada, densa, para planos longos. |
+
+Atalhos com o painel focado: `1`, `2`, `3` trocam o modelo e `m` abre o menu. Também dá para trocar com `/lista linha`, `/lista foco` ou `/lista compacto`.
+
+Em todos os modelos: **Parada há N min** quando o turno acabou com um passo em andamento (o Claude está esperando você), **Concluída** com o tempo total depois do `wrap_up`, e uma versão curta quando o painel está minimizado.
+
+O painel não recebe clique com o botão direito do mouse: o app desktop não entrega esse evento a um mod. Por isso o menu abre no **⋯**.
+
 ## Onde funciona
 
 No app desktop do Claude, aba Code: é lá que existe a ferramenta `update_plan`. No terminal, no VS Code e no celular o mod fica quieto e o painel não abre.
