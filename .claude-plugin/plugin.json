@@ -1,8 +1,11 @@
 {
   "name": "lista-fixa",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Painel fixo à direita com a última lista de tarefas do update_plan",
   "author": { "name": "alexkads" },
   "license": "MIT",
+  "icon": "./.claude-plugin/icon.png",
+  "repository": "https://github.com/alexkads/claude-lista-fixa",
+  "keywords": ["painel", "tarefas", "update_plan", "desktop"],
   "types": "./types/index.d.ts"
 }

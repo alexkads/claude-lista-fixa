@@ -71,7 +71,10 @@ export const register: Register = on => {
       description: 'Mostra a lista de atividades fixa à direita',
     })
     const r = await next(e)
-    void $.ui.open(ABRIR)
+    // Só abre de cara quando a sessão já tem lista (retomada ou recarga).
+    // Onde não existe update_plan (terminal, VS Code) o painel nunca aparece.
+    const l = await read($, lista)
+    if (l.passos.length > 0) void $.ui.open(ABRIR)
     return r
   })
 

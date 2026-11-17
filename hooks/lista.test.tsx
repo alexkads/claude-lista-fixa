@@ -49,3 +49,24 @@ test('acompanha cada update_plan e guarda a última lista', async ($, on) => {
   expect((await ui.find({ type: 'Text', text: /3 de 3/ }))?.text).toMatch(/concluída/)
   await ui.unmount()
 })
+
+test('sem update_plan o painel não abre (terminal, VS Code)', async ($, on) => {
+  const abertos: string[] = []
+  on('command.register', () => ({ value: { command: 'lista' } }))
+  on('ui.open', (_, e) => {
+    abertos.push(e.id)
+    return { value: { isPlaced: true } }
+  })
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('tool.call', () => ({ result: {} }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'Bash', command: 'ls' })
+  expect(abertos).toEqual([])
+
+  await $.tool.call({
+    tool: 'mcp__ccd_turn__update_plan',
+    items: [{ content: 'Um', status: 'in_progress' }],
+  } as never)
+  expect(abertos).toEqual(['lista-fixa'])
+})

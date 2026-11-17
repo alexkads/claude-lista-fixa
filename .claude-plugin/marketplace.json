@@ -1,5 +1,6 @@
 {
   "name": "claude-lista-fixa",
+  "description": "Painel fixo à direita com a lista de atividades do turno, no app desktop do Claude",
   "owner": { "name": "alexkads" },
   "plugins": [{ "name": "lista-fixa", "source": "./" }]
 }
