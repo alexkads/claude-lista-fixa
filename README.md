@@ -13,6 +13,17 @@ Como funciona: um hook `tool.call` em `mcp__ccd_turn__update_plan` reproduz `ite
 
 No app desktop do Claude, aba Code: é lá que existe a ferramenta `update_plan`. No terminal, no VS Code e no celular o mod fica quieto e o painel não abre.
 
+## O que o mod faz e não faz
+
+- Lê apenas as entradas das ferramentas `update_plan` e `wrap_up` da própria sessão.
+- Guarda a lista só no estado da sessão do Claude Code (`$.state`); nada vai para disco fora disso.
+- Não acessa rede, arquivos, processos nem variáveis de ambiente; não envia dados a lugar nenhum.
+- Não muda permissões nem configurações do Claude.
+
+## In English
+
+Keeps the turn's task list (the one the `update_plan` tool draws under the last message in the Claude desktop app) pinned in a pane on the right of the chat, so it stays visible between replies and after the turn ends. Done, in-progress and pending steps get ✓, ◐ and ◌. It only reads the `update_plan` and `wrap_up` tool inputs of its own session, keeps the list in session state, and makes no network, file or process calls. Outside the desktop app's Code tab there is no `update_plan`, so the pane never opens.
+
 ## Instalar
 
 No prompt de uma sessão de terminal:
