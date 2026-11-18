@@ -19,6 +19,10 @@ export type Lista = {
   rodando: boolean
   /** ms do fim do último turno */
   paradaEm?: number
+  /** o turno abriu Monitor ou Bash em segundo plano: a espera é de uma máquina */
+  fundo?: boolean
+  /** o turno terminou numa pergunta (AskUserQuestion): a espera é do usuário */
+  pergunta?: boolean
 }
 export type Modelo = 'linha' | 'foco' | 'compacto'
 

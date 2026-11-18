@@ -112,6 +112,14 @@ const duracao = (ms: number) => {
 const ha = (desde: number | undefined, agora: number) =>
   desde ? (agora - desde < 60000 ? 'agora há pouco' : `há ${duracao(agora - desde)}`) : ''
 
+// 🔑 O turno acabou com um passo aberto. **Quem está esperando?** O painel só
+// pode dizer "aguardando sua resposta" quando o turno terminou numa pergunta;
+// um Monitor ou um Bash em segundo plano significa que a espera é de uma
+// máquina, e sem nenhum dos dois o turno simplesmente acabou.
+async function marcarEspera($: EngineInterface, campo: 'fundo' | 'pergunta') {
+  await update($, lista, l => (l.passos.length ? { ...l, [campo]: true } : l)).catch(() => undefined)
+}
+
 async function trocar($: EngineInterface, m: Modelo) {
   await update($, modelo, () => m)
   await update($, menuAberto, () => false)
@@ -163,7 +171,7 @@ export const register: Register = on => {
 
   on('turn.start', async ($, e, next) => {
     if (e.agentId === undefined) {
-      await update($, lista, l => (l.passos.length ? { ...l, rodando: true, paradaEm: undefined } : l)).catch(
+      await update($, lista, l => (l.passos.length ? { ...l, rodando: true, paradaEm: undefined, fundo: false, pergunta: false } : l)).catch(
         () => undefined,
       )
     }
@@ -193,6 +201,10 @@ export const register: Register = on => {
           encerrada: false,
           rodando: true,
           paradaEm: undefined,
+          // Os sinais de espera valem pelo turno inteiro: um update_plan depois
+          // do Monitor não pode apagá-los.
+          fundo: l.fundo,
+          pergunta: l.pergunta,
         }))
         void $.ui.open(ABRIR)
       } catch {
@@ -203,6 +215,25 @@ export const register: Register = on => {
   }).catch(($, e, next) => (next.called ? { result: {} } : next(e)))
 
   // O wrap_up dá baixa na lista: tudo feito.
+  on('tool.call', { tool: 'Monitor' }, async ($, e, next) => {
+    const ran = await next(e)
+    if (e.agentId === undefined && ran.deny === undefined) await marcarEspera($, 'fundo')
+    return ran
+  }).catch(($, e, next) => (next.called ? { result: {} } : next(e)))
+
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    const ran = await next(e)
+    const emFundo = (e as unknown as { run_in_background?: unknown }).run_in_background === true
+    if (emFundo && e.agentId === undefined && ran.deny === undefined) await marcarEspera($, 'fundo')
+    return ran
+  }).catch(($, e, next) => (next.called ? { result: {} } : next(e)))
+
+  on('tool.call', { tool: 'AskUserQuestion' }, async ($, e, next) => {
+    const ran = await next(e)
+    if (e.agentId === undefined && ran.deny === undefined) await marcarEspera($, 'pergunta')
+    return ran
+  }).catch(($, e, next) => (next.called ? { result: {} } : next(e)))
+
   on('tool.call', { tool: FECHO }, async ($, e, next) => {
     const ran = await next(e)
     if (e.agentId === undefined && ran.deny === undefined) {
@@ -266,7 +297,8 @@ export const register: Register = on => {
       )
     }
 
-    const d: Dados = { l, total, feitos, atual, parada, agora, verFeitos }
+    const espera = l.pergunta ? 'pergunta' : l.fundo ? 'fundo' : 'encerrado'
+    const d: Dados = { l, total, feitos, atual, parada, espera, agora, verFeitos }
 
     if (e.props.placement === 'widget') return widget(ui, d)
 
@@ -342,6 +374,8 @@ type Dados = {
   feitos: number
   atual: Passo | undefined
   parada: boolean
+  /** quem o painel espera quando parada: o usuário, uma máquina ou ninguém */
+  espera: 'pergunta' | 'fundo' | 'encerrado'
   agora: number
   verFeitos: boolean
 }
@@ -433,8 +467,19 @@ const icone = (ui: Elementos, x: Passo, linha: boolean, parada: boolean) =>
     <ui.Svg source={svgPendente(linha)} alt="Pendente" width={20} height={linha ? 34 : 20} isInteractive />
   )
 
+const ROTULO_ESPERA: Record<Dados['espera'], string> = {
+  pergunta: 'Parada',
+  fundo: 'Em segundo plano',
+  encerrado: 'Turno encerrado',
+}
+const TEXTO_ESPERA: Record<Dados['espera'], string> = {
+  pergunta: 'Aguardando sua resposta',
+  fundo: 'Trabalho rodando em segundo plano; não é preciso responder',
+  encerrado: 'Sem pergunta pendente',
+}
+
 const rotuloAgora = (d: Dados) =>
-  d.parada ? `Parada ${ha(d.l.paradaEm, d.agora)}` : `Agora · ${ha(d.atual?.inicio, d.agora) || 'agora há pouco'}`
+  d.parada ? `${ROTULO_ESPERA[d.espera]} ${ha(d.l.paradaEm, d.agora)}` : `Agora · ${ha(d.atual?.inicio, d.agora) || 'agora há pouco'}`
 
 const cartaoAgora = (ui: Elementos, d: Dados, x: Passo) => {
   const { Box, Text } = ui
@@ -456,7 +501,7 @@ const cartaoAgora = (ui: Elementos, d: Dados, x: Passo) => {
         <Text weight="semibold">{x.content}</Text>
         {d.parada && (
           <Text size="caption" dimColor>
-            Aguardando sua resposta
+            {TEXTO_ESPERA[d.espera]}
           </Text>
         )}
       </Box>
