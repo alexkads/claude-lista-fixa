@@ -101,21 +101,84 @@ test('modelo salvo vale numa sessão nova; /lista troca', async ($, on) => {
   await ui.unmount()
 })
 
-test('turno parado com passo aberto mostra Parada; wrap_up conclui', async ($, on) => {
+const fimDoTurno = { turnId: 't1', answer: '', durationMs: 10, isAborted: false, reason: 'end_turn', text: '' } as never
+
+test('turno parado com passo aberto e sem pergunta não pede resposta; wrap_up conclui', async ($, on) => {
   motor(on)
   on('turn.complete', () => ({ text: '' }) as never)
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await $.tool.call(lista3)
-  await $.turn.complete({ turnId: 't1', answer: '', durationMs: 10, isAborted: false, reason: 'end_turn', text: '' } as never)
+  await $.turn.complete(fimDoTurno)
 
   let ui = await $.ui.mount({ ...PAINEL, surface: 'desktop' })
-  expect((await ui.find({ type: 'Text', text: /^PARADA/ }))?.text).toMatch(/^PARADA/)
-  expect((await ui.find({ type: 'Text', text: 'Aguardando sua resposta' }))?.text).toBe('Aguardando sua resposta')
+  expect((await ui.find({ type: 'Text', text: /^TURNO ENCERRADO/ }))?.text).toMatch(/^TURNO ENCERRADO/)
+  expect((await ui.find({ type: 'Text', text: 'Sem pergunta pendente' }))?.text).toBe('Sem pergunta pendente')
+  expect(await ui.find({ type: 'Text', text: 'Aguardando sua resposta' })).toBeUndefined()
   await ui.unmount()
 
   await $.tool.call({ tool: 'mcp__ccd_turn__wrap_up', recap: 'ok' } as never)
   ui = await $.ui.mount({ ...PAINEL, surface: 'desktop' })
   expect((await ui.find({ type: 'Text', text: /3 de 3 concluídos/ }))?.text).toBe('3 de 3 concluídos')
+  await ui.unmount()
+})
+
+test('Monitor ou Bash em segundo plano: a espera é da máquina, não do usuário', async ($, on) => {
+  motor(on)
+  on('turn.complete', () => ({ text: '' }) as never)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.tool.call(lista3)
+  await $.tool.call({ tool: 'Bash', command: 'make', run_in_background: true } as never)
+  // um update_plan depois do comando em segundo plano não apaga o sinal
+  await $.tool.call(lista3)
+  await $.turn.complete(fimDoTurno)
+
+  const ui = await $.ui.mount({ ...PAINEL, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /^EM SEGUNDO PLANO/ }))?.text).toMatch(/^EM SEGUNDO PLANO/)
+  expect((await ui.find({ type: 'Text', text: /segundo plano; não é preciso responder/ }))?.text).toMatch(/não é preciso responder/)
+  expect(await ui.find({ type: 'Text', text: 'Aguardando sua resposta' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('Bash comum não conta como segundo plano', async ($, on) => {
+  motor(on)
+  on('turn.complete', () => ({ text: '' }) as never)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.tool.call(lista3)
+  await $.tool.call({ tool: 'Bash', command: 'ls' })
+  await $.turn.complete(fimDoTurno)
+
+  const ui = await $.ui.mount({ ...PAINEL, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: 'Sem pergunta pendente' }))?.text).toBe('Sem pergunta pendente')
+  await ui.unmount()
+})
+
+test('AskUserQuestion: aí sim aguarda a resposta do usuário', async ($, on) => {
+  motor(on)
+  on('turn.complete', () => ({ text: '' }) as never)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.tool.call(lista3)
+  await $.tool.call({ tool: 'AskUserQuestion', questions: [] } as never)
+  await $.turn.complete(fimDoTurno)
+
+  const ui = await $.ui.mount({ ...PAINEL, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /^PARADA/ }))?.text).toMatch(/^PARADA/)
+  expect((await ui.find({ type: 'Text', text: 'Aguardando sua resposta' }))?.text).toBe('Aguardando sua resposta')
+  await ui.unmount()
+})
+
+test('um turno novo zera os sinais de espera', async ($, on) => {
+  motor(on)
+  on('turn.complete', () => ({ text: '' }) as never)
+  on('turn.start', () => ({ turnId: 't2' }) as never)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.tool.call(lista3)
+  await $.tool.call({ tool: 'AskUserQuestion', questions: [] } as never)
+  await $.turn.complete(fimDoTurno)
+  await $.turn.start({ turnId: 't2' } as never)
+  await $.turn.complete({ ...(fimDoTurno as object), turnId: 't2' } as never)
+
+  const ui = await $.ui.mount({ ...PAINEL, surface: 'desktop' })
+  expect(await ui.find({ type: 'Text', text: 'Aguardando sua resposta' })).toBeUndefined()
   await ui.unmount()
 })
 
